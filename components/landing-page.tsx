@@ -15,6 +15,7 @@ interface TokenBalance {
   price?: number;
   value?: number;
   confidenceLevel?: string;
+  tags?: string[];
 }
 
 interface WalletBalances {
@@ -46,42 +47,37 @@ export function LandingPage() {
   const [balances, setBalances] = useState<WalletBalances>({});
   const [isLoading, setIsLoading] = useState(false);
   const [tokenPrices, setTokenPrices] = useState<TokenPrices>({});
-  const [tokenMetadata, setTokenMetadata] = useState<{ [key: string]: any }>(
+
+  const [verifiedTokens, setVerifiedTokens] = useState<{ [key: string]: any }>(
     {}
   );
 
   const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL || "");
 
   useEffect(() => {
-    fetch(
-      "https://cdn.jsdelivr.net/gh/solana-labs/token-list@main/src/tokens/solana.tokenlist.json"
-    )
+    fetch("/api/tags?tags=verified")
       .then((response) => response.json())
       .then((data) => {
-        const metadata = data.tokens.reduce((acc: any, token: any) => {
-          acc[token.address] = token;
-          return acc;
-        }, {});
-        setTokenMetadata(metadata);
-      });
+        setVerifiedTokens(data);
+      })
+      .catch((error) =>
+        console.error("Error fetching verified tokens:", error)
+      );
   }, []);
 
   async function fetchSolanaTokenPrices(tokens: TokenBalance[]) {
     try {
-      const url =
-        "https://api.jup.ag/price/v2?ids=" +
-        tokens.map((t) => t.mint).join(",") +
-        "&showExtraInfo=true";
+      const tokenIds = tokens.map((t) => t.mint).join(",");
+      const response = await fetch(`/api/jupiter-price?ids=${tokenIds}`);
 
-      console.log("Fetching prices from:", url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch prices: ${response.status}`);
+      }
 
-      const response = await fetch(url);
-      const data = await response.json();
-
-      console.log("Price data received:", data);
-      return data.data as TokenPrices;
+      const { data } = await response.json();
+      return data as TokenPrices;
     } catch (error) {
-      console.error("Error fetching Jupiter prices:", error);
+      console.error("Error fetching token prices:", error);
       return {};
     }
   }
@@ -95,27 +91,21 @@ export function LandingPage() {
         if (!wallet) continue;
 
         const pubKey = new PublicKey(wallet);
-
-        // Fetch SOL balance
         const solBalance = await connection.getBalance(pubKey);
-        const solBalanceInSOL = solBalance / 10 ** 9; // Convert lamports to SOL
+        const solBalanceInSOL = solBalance / 10 ** 9;
 
-        // Fetch token balances (your existing code)
         const tokens = await connection.getParsedTokenAccountsByOwner(pubKey, {
           programId: TOKEN_PROGRAM_ID,
         });
 
-        const walletTokens = tokens.value
+        // First, map tokens and get their prices
+        let walletTokens = tokens.value
           .map(
             (token) =>
               ({
                 mint: token.account.data.parsed.info.mint,
-                symbol:
-                  tokenMetadata[token.account.data.parsed.info.mint]?.symbol ||
-                  "Unknown",
-                name:
-                  tokenMetadata[token.account.data.parsed.info.mint]?.name ||
-                  "Unknown Token",
+                symbol: "Unknown", // We'll update this later
+                name: "Unknown Token", // We'll update this later
                 balance: Number(
                   token.account.data.parsed.info.tokenAmount.uiAmount
                 ),
@@ -125,7 +115,7 @@ export function LandingPage() {
           )
           .filter((token) => token.balance > 0);
 
-        // Fetch prices including SOL
+        // Fetch prices first
         const prices = await fetchSolanaTokenPrices([
           {
             mint: "So11111111111111111111111111111111111111112",
@@ -138,13 +128,35 @@ export function LandingPage() {
           ...walletTokens,
         ]);
 
-        // Add prices to tokens
-        walletTokens.forEach((token) => {
-          if (prices[token.mint]) {
-            token.price = Number(prices[token.mint].price);
-            token.value = token.balance * token.price;
-          }
-        });
+        // Add prices and calculate values
+        walletTokens = await Promise.all(
+          walletTokens.map(async (token) => {
+            if (prices[token.mint]) {
+              token.price = Number(prices[token.mint].price);
+              token.value = token.balance * token.price;
+
+              // Only fetch token info if value is >= $1
+              if (token.value >= 1) {
+                try {
+                  const tokenInfo = await fetch(
+                    `/api/mint?mint=${token.mint}`
+                  ).then((res) => res.json());
+                  if (tokenInfo && !tokenInfo.error) {
+                    token.name = tokenInfo.name;
+                    token.symbol = tokenInfo.symbol;
+                    token.tags = tokenInfo.tags;
+                  }
+                } catch (error) {
+                  console.error(
+                    `Error fetching info for token ${token.mint}:`,
+                    error
+                  );
+                }
+              }
+            }
+            return token;
+          })
+        );
 
         newBalances[wallet] = {
           solBalance: solBalanceInSOL,
@@ -281,7 +293,12 @@ export function LandingPage() {
                             className="rounded-md border p-2 space-y-1"
                           >
                             <div className="text-sm font-medium">
-                              {token.symbol}
+                              {token.name || token.symbol}
+                              {token.tags?.includes("verified") && (
+                                <span className="ml-1 text-xs text-green-500">
+                                  ✓
+                                </span>
+                              )}
                               <span className="text-xs text-gray-400 ml-1">
                                 ({token.mint.slice(0, 4)}...
                                 {token.mint.slice(-4)})
