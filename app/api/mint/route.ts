@@ -72,7 +72,7 @@ export async function GET(request: Request) {
         name: data.name,
         symbol: data.symbol,
         decimals: data.decimals,
-        logo: data.logoURI,
+        logoURI: data.logoURI,
         tags: data.tags,
         hasMarket: data.hasMarket,
         dailyVolume: data.dailyVolume,

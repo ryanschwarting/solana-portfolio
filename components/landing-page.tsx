@@ -16,6 +16,7 @@ interface TokenBalance {
   value?: number;
   confidenceLevel?: string;
   tags?: string[];
+  logoURI?: string;
 }
 
 interface WalletBalances {
@@ -145,6 +146,7 @@ export function LandingPage() {
                     token.name = tokenInfo.name;
                     token.symbol = tokenInfo.symbol;
                     token.tags = tokenInfo.tags;
+                    token.logoURI = tokenInfo.logoURI;
                   }
                 } catch (error) {
                   console.error(
@@ -244,11 +246,23 @@ export function LandingPage() {
                     {/* SOL Balance Card */}
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                       <div className="rounded-md border p-2 space-y-1">
-                        <div className="text-sm font-medium">
-                          SOL
-                          <span className="text-xs text-gray-400 ml-1">
-                            (Native)
-                          </span>
+                        <div className="flex items-center gap-2">
+                          <img
+                            src="https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png"
+                            alt="SOL logo"
+                            className="w-6 h-6 rounded-full"
+                            onError={(e) => {
+                              // Fallback if image fails to load
+                              e.currentTarget.src =
+                                "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png";
+                            }}
+                          />
+                          <div className="text-sm font-medium">
+                            SOL
+                            <span className="text-xs text-gray-400 ml-1">
+                              (Native)
+                            </span>
+                          </div>
                         </div>
                         <div className="text-sm text-gray-500">
                           Balance: {solBalance.toLocaleString()}
@@ -292,17 +306,33 @@ export function LandingPage() {
                             key={i}
                             className="rounded-md border p-2 space-y-1"
                           >
-                            <div className="text-sm font-medium">
-                              {token.name || token.symbol}
-                              {token.tags?.includes("verified") && (
-                                <span className="ml-1 text-xs text-green-500">
-                                  ✓
-                                </span>
+                            <div className="flex items-center gap-2">
+                              {token.logoURI ? (
+                                <img
+                                  src={token.logoURI}
+                                  alt={`${token.symbol} logo`}
+                                  className="w-6 h-6 rounded-full"
+                                  onError={(e) => {
+                                    // Fallback if image fails to load
+                                    e.currentTarget.src =
+                                      "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png";
+                                  }}
+                                />
+                              ) : (
+                                <div className="w-6 h-6 bg-gray-200 rounded-full" />
                               )}
-                              <span className="text-xs text-gray-400 ml-1">
-                                ({token.mint.slice(0, 4)}...
-                                {token.mint.slice(-4)})
-                              </span>
+                              <div className="text-sm font-medium">
+                                {token.name || token.symbol}
+                                {token.tags?.includes("verified") && (
+                                  <span className="ml-1 text-xs text-green-500">
+                                    ✓
+                                  </span>
+                                )}
+                                <span className="text-xs text-gray-400 ml-1">
+                                  ({token.mint.slice(0, 4)}...
+                                  {token.mint.slice(-4)})
+                                </span>
+                              </div>
                             </div>
                             <div className="text-sm text-gray-500">
                               Balance: {token.balance.toLocaleString()}
