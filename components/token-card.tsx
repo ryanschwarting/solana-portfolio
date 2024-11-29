@@ -97,7 +97,7 @@ export function TokenCard({
                           {isVerified && (
                             <Badge
                               variant="secondary"
-                              className="ml-2 bg-green-500 text-white"
+                              className="ml-2 bg-green-500 text-white hover:bg-green-500"
                             >
                               Verified
                             </Badge>
