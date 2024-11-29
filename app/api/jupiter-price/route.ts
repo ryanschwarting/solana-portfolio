@@ -10,8 +10,19 @@ interface TokenPrice {
     quotedPrice?: {
       buyPrice: string;
       sellPrice: string;
+      buyAt: number;
+      sellAt: number;
     };
     confidenceLevel?: string;
+    lastSwappedPrice?: {
+      lastJupiterSellPrice: string;
+      lastJupiterBuyPrice: string;
+      lastJupiterSellAt: number;
+      lastJupiterBuyAt: number;
+    };
+  };
+  priceChange?: {
+    "24h": number;
   };
 }
 
@@ -35,7 +46,7 @@ export async function GET(request: Request) {
     }
 
     const response = await fetch(
-      `https://api.jup.ag/price/v2?ids=${ids}&showExtraInfo=true`,
+      `https://api.jup.ag/price/v2?ids=${ids}&showExtraInfo=true&includeHistory=true`,
       {
         headers: {
           Referer: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",

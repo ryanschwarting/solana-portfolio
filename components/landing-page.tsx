@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { ArrowUpRight, Sparkles } from "lucide-react";
 import { WalletIcon, PlusCircle, X, Loader2, Copy, Check } from "lucide-react";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
@@ -20,6 +22,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { motion, AnimatePresence } from "framer-motion";
+import { TokenCard } from "@/components/token-card";
 
 interface TokenBalance {
   mint: string;
@@ -31,6 +34,7 @@ interface TokenBalance {
   confidenceLevel?: string;
   tags?: string[];
   logoURI?: string;
+  priceChange24h?: number;
 }
 
 interface WalletBalances {
@@ -48,8 +52,19 @@ interface TokenPrice {
     quotedPrice?: {
       buyPrice: string;
       sellPrice: string;
+      buyAt: number;
+      sellAt: number;
     };
     confidenceLevel?: string;
+    lastSwappedPrice?: {
+      lastJupiterSellPrice: string;
+      lastJupiterBuyPrice: string;
+      lastJupiterSellAt: number;
+      lastJupiterBuyAt: number;
+    };
+  };
+  priceChange?: {
+    "24h": number;
   };
 }
 
@@ -109,6 +124,20 @@ export function LandingPage() {
         const solBalance = await connection.getBalance(pubKey);
         const solBalanceInSOL = solBalance / 10 ** 9;
 
+        // First fetch SOL price
+        const prices = await fetchSolanaTokenPrices([
+          {
+            mint: "So11111111111111111111111111111111111111112",
+            symbol: "SOL",
+            name: "Solana",
+            balance: solBalanceInSOL,
+          } as TokenBalance,
+        ]);
+
+        // Set token prices in state
+        setTokenPrices(prices);
+
+        // Get other token balances
         const tokens = await connection.getParsedTokenAccountsByOwner(pubKey, {
           programId: TOKEN_PROGRAM_ID,
         });
@@ -129,23 +158,22 @@ export function LandingPage() {
           )
           .filter((token) => token.balance > 0);
 
-        const prices = await fetchSolanaTokenPrices([
-          {
-            mint: "So11111111111111111111111111111111111111112",
-            symbol: "SOL",
-            name: "Solana",
-            balance: solBalanceInSOL,
-            price: undefined,
-            value: undefined,
-          } as TokenBalance,
-          ...walletTokens,
-        ]);
+        // Fetch prices for other tokens
+        const allTokenPrices = await fetchSolanaTokenPrices([...walletTokens]);
 
+        // Merge SOL price with other token prices
+        setTokenPrices({ ...prices, ...allTokenPrices });
+
+        // Process other tokens
         walletTokens = await Promise.all(
           walletTokens.map(async (token) => {
-            if (prices[token.mint]) {
-              token.price = Number(prices[token.mint].price);
+            if (allTokenPrices[token.mint]) {
+              token.price = Number(allTokenPrices[token.mint].price);
               token.value = token.balance * token.price;
+              token.priceChange24h =
+                allTokenPrices[token.mint].priceChange?.["24h"];
+              token.confidenceLevel =
+                allTokenPrices[token.mint].extraInfo?.confidenceLevel;
 
               if (token.value >= 1) {
                 try {
@@ -184,17 +212,17 @@ export function LandingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-gray-950 text-white">
       <main className="container mx-auto px-4 py-8">
-        <Card className="bg-white text-black border-black">
+        <Card className="bg-gray-900 border-none shadow-none">
           <CardHeader>
             <div className="flex items-center justify-center space-x-4">
-              <WalletIcon className="h-10 w-10 text-black" />
+              <WalletIcon className="h-10 w-10 text-blue-400" />
               <div>
-                <CardTitle className="text-3xl font-bold">
+                <CardTitle className="text-3xl font-bold text-white">
                   Solana Portfolio Tracker
                 </CardTitle>
-                <CardDescription className="text-gray-600">
+                <CardDescription className="text-gray-400">
                   Sync and view all your SPL token balances in one place
                 </CardDescription>
               </div>
@@ -203,16 +231,17 @@ export function LandingPage() {
           <CardContent>
             <div className="space-y-4">
               {wallets.map((wallet, index) => (
-                <div key={index} className="flex gap-2">
+                <div key={index} className="flex gap-2 relative group">
                   <Input
-                    placeholder="Enter wallet address"
+                    placeholder="Enter Solana wallet address"
                     value={wallet}
                     onChange={(e) => {
                       const newWallets = [...wallets];
                       newWallets[index] = e.target.value;
                       setWallets(newWallets);
                     }}
-                    className="bg-white border-black text-black"
+                    className="bg-gray-800/30 border-gray-700/50 text-white placeholder:text-gray-500 h-12 px-4 rounded-xl
+                      focus:ring-blue-500/50 focus:border-blue-500/50 focus:bg-gray-800/50 transition-all duration-200"
                   />
                   {wallets.length > 1 && (
                     <Button
@@ -221,7 +250,8 @@ export function LandingPage() {
                       onClick={() =>
                         setWallets(wallets.filter((_, i) => i !== index))
                       }
-                      className="text-black hover:text-white hover:bg-black"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-400 
+                        hover:bg-transparent transition-colors duration-200"
                     >
                       <X className="h-4 w-4" />
                     </Button>
@@ -229,28 +259,33 @@ export function LandingPage() {
                 </div>
               ))}
 
-              <div className="flex gap-2">
+              <div className="flex gap-3 mt-6">
                 <Button
                   variant="outline"
-                  className="w-full bg-white border-black text-black hover:bg-black hover:text-white"
                   onClick={() => setWallets([...wallets, ""])}
+                  className="flex-1 h-12 bg-gray-800/30 border-gray-700/50 text-gray-300 
+                    hover:bg-gray-800/50 hover:text-white transition-all duration-200 rounded-xl"
                 >
-                  <PlusCircle className="mr-2 h-4 w-4" />
-                  Add Another Wallet
+                  <PlusCircle className="mr-2 h-5 w-5" />
+                  Add Wallet
                 </Button>
 
                 <Button
-                  className="w-full bg-black text-white hover:bg-white hover:text-black border border-black"
                   onClick={fetchTokenBalances}
                   disabled={isLoading}
+                  className="flex-1 h-12 bg-blue-600 hover:bg-blue-700 text-white font-medium
+                    transition-all duration-200 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Loading...
-                    </>
+                    <div className="flex items-center">
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      <span>Loading...</span>
+                    </div>
                   ) : (
-                    "View Balances"
+                    <div className="flex items-center">
+                      <WalletIcon className="mr-2 h-5 w-5" />
+                      <span>View Balances</span>
+                    </div>
                   )}
                 </Button>
               </div>
@@ -258,12 +293,17 @@ export function LandingPage() {
 
             {Object.entries(balances).length > 0 && (
               <div className="mt-8 space-y-6">
-                <h2 className="text-2xl font-semibold">Token Balances</h2>
+                <h2 className="text-2xl font-semibold text-white">
+                  Token Balances
+                </h2>
                 {Object.entries(balances).map(
                   ([wallet, { solBalance, tokens }]) => (
-                    <Card key={wallet} className="bg-white border-black">
+                    <Card
+                      key={wallet}
+                      className="bg-gray-900 border-none shadow-none"
+                    >
                       <CardHeader>
-                        <CardTitle className="text-lg flex items-center justify-between">
+                        <CardTitle className="text-lg flex items-center justify-between text-white">
                           <div className="flex items-center gap-2">
                             Wallet:
                             <div className="relative flex items-center gap-1.5 min-w-[140px]">
@@ -341,13 +381,27 @@ export function LandingPage() {
                             name="Solana"
                             symbol="SOL"
                             balance={solBalance}
-                            price={
-                              tokenPrices?.[
+                            price={Number(
+                              tokenPrices[
                                 "So11111111111111111111111111111111111111112"
                               ]?.price
+                            )}
+                            value={
+                              solBalance *
+                              Number(
+                                tokenPrices[
+                                  "So11111111111111111111111111111111111111112"
+                                ]?.price || 0
+                              )
+                            }
+                            priceChange24h={
+                              tokenPrices[
+                                "So11111111111111111111111111111111111111112"
+                              ]?.priceChange?.["24h"]
                             }
                             logoURI="https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png"
                             isNative
+                            isVerified={true}
                           />
 
                           {tokens
@@ -365,10 +419,10 @@ export function LandingPage() {
                                 symbol={token.symbol}
                                 balance={token.balance}
                                 price={token.price}
+                                priceChange24h={token.priceChange24h}
                                 logoURI={token.logoURI}
                                 isVerified={token.tags?.includes("verified")}
                                 mint={token.mint}
-                                confidenceLevel={token.confidenceLevel}
                               />
                             ))}
                         </div>
@@ -383,116 +437,4 @@ export function LandingPage() {
       </main>
     </div>
   );
-}
-
-interface TokenCardProps {
-  name: string;
-  symbol: string;
-  balance: number;
-  price?: string | number;
-  logoURI?: string;
-  isNative?: boolean;
-  isVerified?: boolean;
-  mint?: string;
-  confidenceLevel?: string;
-}
-
-function TokenCard({
-  name,
-  symbol,
-  balance,
-  price,
-  logoURI,
-  isNative,
-  isVerified,
-  mint,
-  confidenceLevel,
-}: TokenCardProps) {
-  const numericPrice = typeof price === "string" ? parseFloat(price) : price;
-  const value = numericPrice ? balance * numericPrice : undefined;
-
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className="bg-white border border-black rounded-lg p-4 shadow-lg hover:shadow-xl transition-shadow duration-200 cursor-pointer">
-            <div className="flex items-center space-x-3 mb-2">
-              {logoURI ? (
-                <img
-                  src={logoURI}
-                  alt={`${symbol} logo`}
-                  className="w-8 h-8 rounded-full"
-                  onError={(e) => {
-                    e.currentTarget.src =
-                      "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png";
-                  }}
-                />
-              ) : (
-                <div className="w-8 h-8 bg-gray-200 rounded-full" />
-              )}
-              <div>
-                <h3 className="font-semibold text-lg">
-                  {symbol}{" "}
-                  {isVerified && (
-                    <span className="text-green-500 text-sm ml-1">✓</span>
-                  )}
-                </h3>
-                <p className="text-sm text-gray-600">{name}</p>
-              </div>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm">
-                Balance:{" "}
-                <span className="font-medium">
-                  {balance.toLocaleString(undefined, {
-                    maximumFractionDigits: 4,
-                  })}
-                </span>
-              </p>
-              {numericPrice && (
-                <p className="text-sm">
-                  Price:{" "}
-                  <span className="font-medium">
-                    ${formatTokenPrice(numericPrice)}
-                  </span>
-                  {confidenceLevel && (
-                    <span
-                      className={`ml-1 text-xs ${
-                        confidenceLevel === "high"
-                          ? "text-green-500"
-                          : confidenceLevel === "medium"
-                          ? "text-yellow-500"
-                          : "text-red-500"
-                      }`}
-                    >
-                      ({confidenceLevel})
-                    </span>
-                  )}
-                </p>
-              )}
-              {value && (
-                <p className="text-sm">
-                  Value:{" "}
-                  <span className="font-medium">${value.toFixed(2)}</span>
-                </p>
-              )}
-            </div>
-          </div>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>{isNative ? "Native SOL" : `Token Address: ${mint}`}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-function formatTokenPrice(price: number): string {
-  if (price < 0.01) {
-    return `$${price.toFixed(8)}`; // For very low prices
-  } else if (price < 1) {
-    return `$${price.toFixed(4)}`; // For prices less than $1
-  } else {
-    return `$${price.toFixed(2)}`; // For prices $1 and above
-  }
 }
