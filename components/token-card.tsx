@@ -2,9 +2,14 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowUpRight, Sparkles } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { ArrowUpRight, Sparkles, Check } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface TokenCardProps {
   name: string;
@@ -69,27 +74,39 @@ export function TokenCard({
                   <img
                     src={logoURI}
                     alt={`${symbol} logo`}
-                    className="w-10 h-10 rounded-full ring-2 ring-blue-500 ring-opacity-50"
+                    className="w-10 h-10 rounded-full"
                     onError={(e) => {
                       e.currentTarget.src =
                         "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png";
                     }}
                   />
                 ) : (
-                  <div className="w-10 h-10 bg-blue-500 bg-opacity-20 rounded-full flex items-center justify-center">
-                    <Sparkles className="w-6 h-6 text-blue-400" />
+                  <div className="w-10 h-10 bg-phantom bg-opacity-20 rounded-full flex items-center justify-center">
+                    <Sparkles className="w-6 h-6 text-phantom" />
                   </div>
                 )}
                 <div>
                   <h3 className="font-bold text-white flex items-center">
                     <span className="text-xl">{symbol}</span>
                     {isVerified && (
-                      <Badge
-                        variant="secondary"
-                        className="text-[10px] ml-2 bg-green-500 text-white hover:bg-green-500"
-                      >
-                        Verified
-                      </Badge>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <div className="ml-1.5 flex items-center justify-center w-5 h-5 rounded-full bg-green-500/10">
+                              <Check
+                                className="w-3.5 h-3.5 text-green-500"
+                                strokeWidth={2.5}
+                              />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="text-sm">
+                              This token has been verified by Jupiter and meets
+                              their security standards
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     )}
                   </h3>
                   <p className="text-sm text-gray-400">{name}</p>
